@@ -39,6 +39,10 @@ ERROR_CODE = {
 
 def sendRequest(sock, server_address, filename, mode, blk_size, is_write):
     opcode = OPCODE["WRQ"] if is_write else OPCODE["RRQ"]
+    if opcode == 2:
+        file_name = os.path.join(os.path.dirname(__file__), filename)
+        tsize = bytearray('tsize'.encode("utf-8"))
+        t_size = bytearray(str(os.path.getsize(file_name)).encode("utf-8"))
     filename = bytearray(filename.encode("utf-8"))
     mode = bytearray(mode.encode("utf-8"))
     blksize = bytearray('blksize'.encode("utf-8"))
@@ -54,6 +58,12 @@ def sendRequest(sock, server_address, filename, mode, blk_size, is_write):
     request_message.append(0)
     request_message += blk_size
     request_message.append(0)
+    if opcode == 2:
+        request_message += tsize
+        request_message.append(0)
+        request_message += t_size
+        request_message.append(0)
+    print(request_message)
     sock.sendto(request_message, server_address)
 
 
@@ -169,7 +179,8 @@ def main():
                     filename = input("Filename: ")
                     filename = os.path.join(
                         os.path.dirname(__file__), filename)
-                    server_filename = input("Enter the filename to be used on the server: ")
+                    server_filename = input(
+                        "Enter the filename to be used on the server: ")
                     mode = get_mode()
                     blk_size = set_custom_blk_size()
                     server_filename = os.path.basename(server_filename)
@@ -251,9 +262,8 @@ def main():
                 finally:
                     file.close()
                 if completed:
-                    print(
-                        f"{
-                            "Get" if choice == 1 else "Put"} completed successfully.")
+                    print(f"{"Get" if choice ==
+                             1 else "Put"} completed successfully.")
         except socket.gaierror:
             print("Error: Invalid server IP address. Please try again.")
 

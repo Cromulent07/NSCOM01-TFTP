@@ -36,67 +36,66 @@ ERROR_CODE = {
 }
 
 
-def sendRequest(sock, server_address, filename, mode, blk_size, is_write):
-    opcode = OPCODE["WRQ"] if is_write else OPCODE["RRQ"]
-    filename_bytes = bytearray(filename.encode("utf-8"))
-    mode_bytes = bytearray(mode.encode("utf-8"))
-    blksize_bytes = bytearray(
+def sendRequest(sock, serverAddress, f1, f2, mode, blkSize, isWrite):
+    opcode = OPCODE["WRQ"] if isWrite else OPCODE["RRQ"]
+    filenameBytes = bytearray(f2.encode("utf-8"))
+    modeBytes = bytearray(mode.encode("utf-8"))
+    blksizeBytes = bytearray(
         "blksize\x00".encode("utf-8") +
-        str(blk_size).encode("utf-8"))
+        str(blkSize).encode("utf-8"))
 
-    request_message = bytearray()
-    request_message.append(0)
-    request_message.append(opcode & 0xFF)
-    request_message += filename_bytes
-    request_message.append(0)
-    request_message += mode_bytes
-    request_message.append(0)
-    request_message += blksize_bytes
-    request_message.append(0)
+    requestMessage = bytearray()
+    requestMessage.append(0)
+    requestMessage.append(opcode & 0xFF)
+    requestMessage += filenameBytes
+    requestMessage.append(0)
+    requestMessage += modeBytes
+    requestMessage.append(0)
+    requestMessage += blksizeBytes
+    requestMessage.append(0)
 
     if opcode == 2:
-        file_name = os.path.join(os.path.dirname(__file__), filename)
-        tsize_bytes = bytearray("tsize".encode("utf-8"))
-        file_size_bytes = bytearray(
-            str(os.path.getsize(file_name)).encode("utf-8"))
-        request_message += tsize_bytes
-        request_message.append(0)
-        request_message += file_size_bytes
-        request_message.append(0)
+        tsizeBytes = bytearray("tsize".encode("utf-8"))
+        fileSizeBytes = bytearray(
+            str(os.path.getsize(f1)).encode("utf-8"))
+        requestMessage += tsizeBytes
+        requestMessage.append(0)
+        requestMessage += fileSizeBytes
+        requestMessage.append(0)
 
-    sock.sendto(request_message, server_address)
-
-
-def sendAck(sock, server_address, seq_num):
-    ack_message = bytearray()
-    ack_message.append(0)
-    ack_message.append(OPCODE["ACK"])
-    ack_message.extend(seq_num.to_bytes(2, 'big'))
-    sock.sendto(ack_message, server_address)
+    sock.sendto(requestMessage, serverAddress)
 
 
-def sendData(sock, server_address, seq_num, data):
-    data_message = bytearray()
-    data_message.append(0)
-    data_message.append(OPCODE["DATA"])
-    data_message.extend((seq_num % 65536).to_bytes(2, 'big'))
-    data_message += data
-    sock.sendto(data_message, server_address)
+def sendAck(sock, serverAddress, seqNum):
+    ackMessage = bytearray()
+    ackMessage.append(0)
+    ackMessage.append(OPCODE["ACK"])
+    ackMessage.extend(seqNum.to_bytes(2, 'big'))
+    sock.sendto(ackMessage, serverAddress)
 
 
-def sendError(sock, server_address, error_code, error_message):
-    error_message_bytes = bytearray(error_message.encode("utf-8"))
-    error_packet = bytearray()
-    error_packet.append(0)
-    error_packet.append(OPCODE["ERROR"])
-    error_packet.append(0)
-    error_packet.append(error_code)
-    error_packet += error_message_bytes
-    error_packet.append(0)
-    sock.sendto(error_packet, server_address)
+def sendData(sock, serverAddress, seqNum, data):
+    dataMessage = bytearray()
+    dataMessage.append(0)
+    dataMessage.append(OPCODE["DATA"])
+    dataMessage.extend((seqNum % 65536).to_bytes(2, 'big'))
+    dataMessage += data
+    sock.sendto(dataMessage, serverAddress)
 
 
-def set_custom_blk_size():
+def sendError(sock, serverAddress, errorCode, errorMessage):
+    errorMessageBytes = bytearray(errorMessage.encode("utf-8"))
+    errorPacket = bytearray()
+    errorPacket.append(0)
+    errorPacket.append(OPCODE["ERROR"])
+    errorPacket.append(0)
+    errorPacket.append(errorCode)
+    errorPacket += errorMessageBytes
+    errorPacket.append(0)
+    sock.sendto(errorPacket, serverAddress)
+
+
+def setCustomBlkSize():
     while True:
         print("[1] 128")
         print("[2] 512 (Default)")
@@ -115,7 +114,7 @@ def set_custom_blk_size():
     return choice
 
 
-def get_mode():
+def getMode():
     while True:
         print("[1] Netascii")
         print("[2] Octet")
@@ -127,23 +126,23 @@ def get_mode():
     return "netascii" if mode == 1 else "octet"
 
 
-def get_oack_blksize(data):
-    null_byte_index = data.find(b'blksize')+8
-    next_null_byte = data[null_byte_index:].find(b'\x00')
-    blksize = int(data[null_byte_index:null_byte_index+next_null_byte].decode())
-    blksize_code = [i for i, j in enumerate(BLOCK_SIZE.values()) if j == blksize][0]+1
+def getOackBlksize(data):
+    nullByteIndex = data.find(b'blksize')+8
+    nextNullByte = data[nullByteIndex:].find(b'\x00')
+    blkSize = int(data[nullByteIndex:nullByteIndex+nextNullByte].decode())
+    blksize_code = [i for i, j in enumerate(BLOCK_SIZE.values()) if j == blkSize][0]+1
     return blksize_code
 
 
 def main():
     print("Welcome to the TFTP Client!")
     finished = False
-    oack_finished = False
+    oackFinished = False
 
     while True and not finished:
 
-        # server_ip = input("Enter the server IP address: ")
-        server_ip = "127.0.0.1"
+        server_ip = input("Enter the server IP address: ")
+        # server_ip = "127.0.0.1"
         try:
             while True:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -158,52 +157,54 @@ def main():
                 completed = False
 
                 if choice == 1:  # Get
-                    filename = input("Filename: ")
-                    filename = os.path.join(
-                        os.path.dirname(__file__), filename)
-                    mode = get_mode()
-                    blk_size = set_custom_blk_size()
-                    file_name = os.path.basename(filename)
+                    fileName = input("Filename: ")
+                    fileName = os.path.join(
+                        os.path.dirname(__file__), fileName)
+                    fileName = os.path.basename(fileName)
+                    mode = getMode()
+                    blkSize = setCustomBlkSize()
                     try:
                         sendRequest(
                             sock,
                             server_address,
-                            file_name,
+                            fileName,
+                            fileName,
                             mode,
-                            BLOCK_SIZE[blk_size],
-                            is_write=False)
-                        file = open(filename, "wb")
+                            BLOCK_SIZE[blkSize],
+                            isWrite=False)
+                        file = open(fileName, "wb")
                         completed = True
                     except FileNotFoundError:
                         print("Error: No such file or directory.")
                         continue
-                    seq_number = 0
-                    print(f"Downloading {filename} from the server...")
+                    seqNum = 0
+                    print(f"Downloading {fileName} from the server...")
 
                 elif choice == 2:  # Put
-                    filename = input("Filename: ")
-                    filename = os.path.join(
-                        os.path.dirname(__file__), filename)
-                    server_filename = input(
-                        "Enter the filename to be used on the server: ")
-                    mode = get_mode()
-                    blk_size = set_custom_blk_size()
-                    server_filename = os.path.basename(server_filename)
+                    fileName = input("Filename: ")
+                    fileNamePath = os.path.join(
+                        os.path.dirname(__file__), fileName)
+                    serverFilename = input(
+                        "Server filename: ")
+                    serverFilenamePath = os.path.basename(serverFilename)
+                    mode = getMode()
+                    blkSize = setCustomBlkSize()
                     try:
                         sendRequest(
                             sock,
                             server_address,
-                            server_filename,
+                            fileNamePath,
+                            serverFilenamePath,
                             mode,
-                            BLOCK_SIZE[blk_size],
-                            is_write=True)
-                        file = open(filename, "rb")
+                            BLOCK_SIZE[blkSize],
+                            isWrite=True)
+                        file = open(fileNamePath, "rb")
                         completed = True
                     except FileNotFoundError:
                         print("Error: No such file or directory.")
                         continue
-                    seq_number = 1
-                    print(f"Uploading {filename} to the server...")
+                    seqNum = 1
+                    print(f"Uploading {fileName} to the server as {serverFilename}...")
 
                 elif choice == 3:  # Exit
                     finished = True
@@ -213,7 +214,7 @@ def main():
                     while True:
                         try:
                             data, server = sock.recvfrom(
-                                BLOCK_SIZE[blk_size] + 4)
+                                BLOCK_SIZE[blkSize] + 4)
                         except BaseException:
                             print(
                                 "Error: Failed to receive data from the TFTP server. Please make sure the server is running and reachable.")
@@ -223,42 +224,39 @@ def main():
                         opcode = int.from_bytes(data[:2], "big")
 
                         if opcode == OPCODE["DATA"]:
-                            seq_number = int.from_bytes(data[2:4], "big")
-                            if oack_finished:
-                                sendAck(sock, server, seq_number)
+                            seqNum = int.from_bytes(data[2:4], "big")
+                            if oackFinished:
+                                sendAck(sock, server, seqNum)
                             else:
-                                sendAck(sock, server, seq_number + 1)
-                            file_block = data[4:]
-                            file.write(file_block)
+                                sendAck(sock, server, seqNum + 1)
+                            fileBlock = data[4:]
+                            file.write(fileBlock)
 
-                            if len(file_block) < BLOCK_SIZE[blk_size]:
+                            if len(fileBlock) < BLOCK_SIZE[blkSize]:
                                 break
                         elif opcode == OPCODE["ACK"]:
-                            seq_number = int.from_bytes(data[2:4], "big")
-                            file_block = file.read(BLOCK_SIZE[blk_size])
+                            seqNum = int.from_bytes(data[2:4], "big")
+                            fileBlock = file.read(BLOCK_SIZE[blkSize])
 
-                            if len(file_block) == 0:
+                            if len(fileBlock) < BLOCK_SIZE[blkSize]:
                                 break
-
-                            sendData(sock, server, seq_number + 1, file_block)
-                            if len(file_block) < BLOCK_SIZE[blk_size]:
-                                break
+                            sendData(sock, server, seqNum + 1, fileBlock)
                         elif opcode == OPCODE["ERROR"]:
-                            error_code = int.from_bytes(
+                            errorCode = int.from_bytes(
                                 data[2:4], byteorder="big")
-                            error_message = data[4:-1].decode("utf-8")
-                            sendError(sock, server, error_code, error_message)
-                            print("ERROR: " + ERROR_CODE[error_code])
+                            errorMesage = data[4:-1].decode("utf-8")
+                            sendError(sock, server, errorCode, errorMesage)
+                            print("ERROR: " + ERROR_CODE[errorCode])
                             completed = False
                             break
                         elif opcode == OPCODE["OACK"]:
-                            blk_size = get_oack_blksize(data)
+                            blkSize = getOackBlksize(data)
                             if choice == 1:
-                                sendAck(sock, server, seq_number)
+                                sendAck(sock, server, seqNum)
                             elif choice == 2:
-                                file_block = file.read(BLOCK_SIZE[blk_size])
-                                sendData(sock, server, seq_number, file_block)
-                            oack_finished = True
+                                fileBlock = file.read(BLOCK_SIZE[blkSize])
+                                sendData(sock, server, seqNum, fileBlock)
+                            oackFinished = True
                         else:
                             break
 

@@ -1,6 +1,5 @@
 import socket
 import os
-from struct import pack
 
 DEFAULT_PORT = 69
 
@@ -39,31 +38,32 @@ ERROR_CODE = {
 
 def sendRequest(sock, server_address, filename, mode, blk_size, is_write):
     opcode = OPCODE["WRQ"] if is_write else OPCODE["RRQ"]
-    if opcode == 2:
-        file_name = os.path.join(os.path.dirname(__file__), filename)
-        tsize = bytearray('tsize'.encode("utf-8"))
-        t_size = bytearray(str(os.path.getsize(file_name)).encode("utf-8"))
-    filename = bytearray(filename.encode("utf-8"))
-    mode = bytearray(mode.encode("utf-8"))
-    blksize = bytearray('blksize'.encode("utf-8"))
-    blk_size = bytearray(str(blk_size).encode("utf-8"))
+    filename_bytes = bytearray(filename.encode("utf-8"))
+    mode_bytes = bytearray(mode.encode("utf-8"))
+    blksize_bytes = bytearray(
+        "blksize\x00".encode("utf-8") +
+        str(blk_size).encode("utf-8"))
+
     request_message = bytearray()
     request_message.append(0)
     request_message.append(opcode & 0xFF)
-    request_message += filename
+    request_message += filename_bytes
     request_message.append(0)
-    request_message += mode
+    request_message += mode_bytes
     request_message.append(0)
-    request_message += blksize
+    request_message += blksize_bytes
     request_message.append(0)
-    request_message += blk_size
-    request_message.append(0)
+
     if opcode == 2:
-        request_message += tsize
+        file_name = os.path.join(os.path.dirname(__file__), filename)
+        tsize_bytes = bytearray("tsize".encode("utf-8"))
+        file_size_bytes = bytearray(
+            str(os.path.getsize(file_name)).encode("utf-8"))
+        request_message += tsize_bytes
         request_message.append(0)
-        request_message += t_size
+        request_message += file_size_bytes
         request_message.append(0)
-    print(request_message)
+
     sock.sendto(request_message, server_address)
 
 
@@ -71,8 +71,7 @@ def sendAck(sock, server_address, seq_num):
     ack_message = bytearray()
     ack_message.append(0)
     ack_message.append(OPCODE["ACK"])
-    ack_message.append(0)
-    ack_message.append(seq_num)
+    ack_message.extend(seq_num.to_bytes(2, 'big'))
     sock.sendto(ack_message, server_address)
 
 
@@ -80,8 +79,7 @@ def sendData(sock, server_address, seq_num, data):
     data_message = bytearray()
     data_message.append(0)
     data_message.append(OPCODE["DATA"])
-    data_message.append(0)
-    data_message.append(seq_num)
+    data_message.extend((seq_num % 65536).to_bytes(2, 'big'))
     data_message += data
     sock.sendto(data_message, server_address)
 
@@ -129,10 +127,18 @@ def get_mode():
     return "netascii" if mode == 1 else "octet"
 
 
+def get_oack_blksize(data):
+    null_byte_index = data.find(b'blksize')+8
+    next_null_byte = data[null_byte_index:].find(b'\x00')
+    blksize = int(data[null_byte_index:null_byte_index+next_null_byte].decode())
+    blksize_code = [i for i, j in enumerate(BLOCK_SIZE.values()) if j == blksize][0]+1
+    return blksize_code
+
+
 def main():
     print("Welcome to the TFTP Client!")
     finished = False
-    tapos_na_oack = False
+    oack_finished = False
 
     while True and not finished:
 
@@ -140,7 +146,6 @@ def main():
         server_ip = "127.0.0.1"
         try:
             while True:
-                # Connect to server
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 server_address = (server_ip, DEFAULT_PORT)
                 sock.settimeout(5)
@@ -219,10 +224,10 @@ def main():
 
                         if opcode == OPCODE["DATA"]:
                             seq_number = int.from_bytes(data[2:4], "big")
-                            if tapos_na_oack:
-                                sendAck(sock, server, seq_number + 1)
-                            else:
+                            if oack_finished:
                                 sendAck(sock, server, seq_number)
+                            else:
+                                sendAck(sock, server, seq_number + 1)
                             file_block = data[4:]
                             file.write(file_block)
 
@@ -247,11 +252,13 @@ def main():
                             completed = False
                             break
                         elif opcode == OPCODE["OACK"]:
+                            blk_size = get_oack_blksize(data)
                             if choice == 1:
                                 sendAck(sock, server, seq_number)
                             elif choice == 2:
                                 file_block = file.read(BLOCK_SIZE[blk_size])
                                 sendData(sock, server, seq_number, file_block)
+                            oack_finished = True
                         else:
                             break
 

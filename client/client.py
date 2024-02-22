@@ -238,9 +238,9 @@ def main():
                             seqNum = int.from_bytes(data[2:4], "big")
                             fileBlock = file.read(BLOCK_SIZE[blkSize])
 
+                            sendData(sock, server, seqNum + 1, fileBlock)
                             if len(fileBlock) < BLOCK_SIZE[blkSize]:
                                 break
-                            sendData(sock, server, seqNum + 1, fileBlock)
                         elif opcode == OPCODE["ERROR"]:
                             errorCode = int.from_bytes(
                                 data[2:4], byteorder="big")
